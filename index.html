@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#E26C3A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="新宿ナビ">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="manifest" href="manifest.json">
+<title>新宿ナビ</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",sans-serif;
+       background:linear-gradient(180deg,#FFF4EA 0%,#FDE7D6 100%);color:#4A2A1A;
+       display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{width:100%;max-width:400px;background:#fff;border-radius:24px;padding:36px 28px 28px;
+        box-shadow:0 10px 30px rgba(180,90,40,.15);text-align:center}
+  .ico{width:96px;height:96px;border-radius:22px;display:block;margin:0 auto 16px}
+  h1{font-size:28px;margin:0 0 6px;letter-spacing:.05em}
+  .lead{font-size:17px;margin:0 0 24px;color:#7A5644}
+  input[type=password],input[type=text]{width:100%;font-size:22px;padding:16px;border:2px solid #E9C6AE;
+        border-radius:14px;text-align:center;outline:none;letter-spacing:.08em}
+  input:focus{border-color:#E26C3A}
+  .row{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 0 4px;font-size:16px}
+  .row input{width:24px;height:24px;accent-color:#E26C3A}
+  .show{background:none;border:none;color:#B4552B;font-size:15px;margin-top:8px;text-decoration:underline;cursor:pointer}
+  button.go{width:100%;margin-top:18px;font-size:22px;font-weight:bold;padding:16px;border:none;border-radius:14px;
+        background:#E26C3A;color:#fff;cursor:pointer}
+  button.go:disabled{opacity:.6}
+  .err{min-height:26px;margin-top:12px;color:#C0392B;font-size:17px;font-weight:bold}
+  .note{font-size:13px;color:#9A7B6A;margin-top:14px;line-height:1.6}
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="off">
+  <img class="ico" src="icon-192.png" alt="">
+  <h1>新宿ナビ</h1>
+  <p class="lead">合言葉を入れてください</p>
+  <input id="pw" type="password" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="合言葉">
+  <button type="button" class="show" id="show">合言葉を表示する</button>
+  <label class="row"><input type="checkbox" id="keep" checked> この端末では次から入力しない</label>
+  <button class="go" id="go" type="submit">入る</button>
+  <div class="err" id="err" role="alert"></div>
+  <p class="note">これは確認用の試作です。<br>合言葉は、ほかの方に伝えないでください。</p>
+</form>
+<script>
+(function(){
+  var KEY='shinjuku-navi-pass';
+  var $=function(id){return document.getElementById(id)};
+  function b64(s){var b=atob(s),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+  var pack=null;
+  function load(){ if(pack) return Promise.resolve(pack);
+    return fetch('content.json?v='+Date.now(),{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){pack=j;return j}); }
+  function open(pass){
+    return load().then(function(p){
+      var enc=new TextEncoder();
+      return crypto.subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']).then(function(base){
+        return crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(p.salt),iterations:p.iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['decrypt']);
+      }).then(function(k){
+        return crypto.subtle.decrypt({name:'AES-GCM',iv:b64(p.iv)},k,b64(p.data));
+      }).then(function(buf){ return new TextDecoder().decode(buf); });
+    });
+  }
+  function show(html){ document.open(); document.write(html); document.close(); }
+  function save(p){ try{ localStorage.setItem(KEY,p) }catch(e){} }
+  function forget(){ try{ localStorage.removeItem(KEY) }catch(e){} }
+  // 前に保存した合言葉で自動で入る
+  var saved=null; try{ saved=localStorage.getItem(KEY) }catch(e){}
+  if(saved){ open(saved).then(show).catch(function(){ forget(); }); }
+  $('show').onclick=function(){ var t=$('pw').type==='password'; $('pw').type=t?'text':'password'; this.textContent=t?'合言葉をかくす':'合言葉を表示する'; };
+  $('f').onsubmit=function(e){
+    e.preventDefault();
+    var p=$('pw').value.trim(); if(!p){ $('err').textContent='合言葉を入れてください'; return; }
+    $('go').disabled=true; $('go').textContent='確かめています…'; $('err').textContent='';
+    open(p).then(function(html){ if($('keep').checked) save(p); else forget(); show(html); })
+      .catch(function(){ $('err').textContent='合言葉が違います。もう一度入れてください'; $('go').disabled=false; $('go').textContent='入る'; });
+  };
+})();
+</script>
+</body>
+</html>
